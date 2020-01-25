@@ -1,60 +1,10 @@
 # import pandas as pd
 import itertools
 import re
+import csv
+import xlsxwriter
 
-file_log = open("aon_osc_wakeup.txt", "w")
-file_log.write("Welcome to Python Spyglass Flow \n")
-
-file_log_str = open("aon_osc_wakeup_string.txt", "w")
-
-
-# file_log.write("Welcome to Python Spyglass Flow \n")
-
-##Functions
-def nextword(target, source):
-    for i, w in enumerate(source):
-        if w == target:
-            if (not (source[i + 1].__contains__('rst'))) is not None:
-                return source[i + 1]
-            else:
-                return "None"
-
-
-# Open file and read lines
-textfile = open("aon_osc_wakeup.v", "r")
-textfilelines = textfile.readlines()
-textfile_to_str = open("aon_osc_wakeup.v", "r")
-textfilelines_str = textfile_to_str.read()
-pattern = re.compile(r'//[^\n]*|/\*.*?\*/', re.DOTALL | re.MULTILINE)
-textfilelines_str = re.sub(pattern, "", textfilelines_str)
-#file_log_str.write("Welcome")
-#file_log_str.write(textfilelines_str)
-
-assign_val=re.findall(r"assign\s+[\w_0-9]+\s*.*;{1}",textfilelines_str)
-
-#always_var=re.findall(r"always\s+[^assign|endmodule|always]*$",textfilelines_str)
-always_var=re.findall(r"always\s+(?:(?!always|assign|endmodule).)*",textfilelines_str, re.DOTALL)
-
-file_log_str.write("\n Assign statements : \n")
-file_log_str.write(str(assign_val))
-
-file_log_str.write("\n Always Block : \n")
-file_log_str.write(str(always_var))
-
-#for always_stmt in always_var:
-    #always_stmt_sp=re.sub(' +',' ',always_stmt) ## removes multiple spaces
-    #print(always_stmt_sp)
-
-
-
-
-#for alwys_stmt in always_var:
-  #  alwys_stmt_sp=re.sub(' +',' ',alwys_stmt) ## removes multiple spaces
-   # alwys_stmt_sp=re.sub(r'\n\s*\n', '\n\n',alwys_stmt_sp)
-  #  print(alwys_stmt_sp)
-
-
-############################################################################ Old section
+############################################################################ 
 # Declarations
 always_blk_found = 0
 clk_domain = ""
@@ -71,6 +21,158 @@ clk_list_tot_1 = []
 clk_list_tot_2 = []
 flat_list_0 = []
 flat_list_1 = []
+op_pass_list=[]
+op_fail_list=[]
+
+##Functions ###
+def nextword(target, source):
+    for i, w in enumerate(source):
+        if w == target:
+            if (not (source[i + 1].__contains__('rst'))) is not None:
+                return source[i + 1]
+            else:
+                return "None"
+
+def port_append(port, pass_op, clk):
+    if pass_op == 1:
+        if not port in op_fail_list:
+            if port in op_pass_list:
+                if(op_pass_list[op_pass_list.index(port)+1] != clk):
+                   file_log.write("Error: More than one clk for Output port : ")
+                   file_log.write(str(port))
+            else:
+                op_pass_list.append(port)
+                op_pass_list.append(clk)
+    else:
+        op_fail_list.append(port)
+        if port in op_pass_list:
+            op_pass_list.remove(port)
+            op_pass_list.pop(op_pass_list.index(port)+1)
+
+            
+def remove_duplicates(list_to_check):
+    list_to_check = list(dict.fromkeys(list_to_check))
+
+def extract_signals(list_to_ext, mode):
+    list_fin=[];
+    if len(list_to_ext) != 0 :
+        for item in list_to_ext:
+            item=re.sub(' +',' ',item) ## removes multiple spaces
+            item = re.sub('[()|^?:;!,-]+', ' ', item)
+            item = re.sub('[\(\[].*?[\)\]]+', '', item) # remove bit positions
+            item = item.strip()
+            if mode == "input": 
+                list_fin.insert(len(list_fin), item[5:].strip())
+            elif mode== "output":
+                if(item.startswith("output reg")):
+                    list_fin.insert(len(list_fin), item[10:].strip())
+                else:
+                    list_fin.insert(len(list_fin), item[6:].strip())
+            elif mode == "wire": 
+                list_fin.insert(len(list_fin), item[4:].strip())
+            elif mode == "logic":
+                 list_fin.insert(len(list_fin), item[5:].strip())
+            elif mode == "reg":
+                list_fin.insert(len(list_fin), item[3:].strip())
+    return list_fin
+
+
+file_input_files = open("input_files.txt", "r")
+inputfilelines = file_input_files.readlines()
+for line in inputfilelines:
+    print(line)
+
+file_log = open("aon_pwrup_seq.txt", "w")
+file_log.write("Welcome to Python Spyglass Flow \n")
+file_log_str = open("aon_osc_wakeup_string.txt", "w")
+
+# Open file and read l
+textfile = open("aon_pwrup_seq.v", "r")
+textfilelines = textfile.readlines()
+textfile_to_str = open("aon_pwrup_seq.v", "r")
+textfilelines_str = textfile_to_str.read()
+pattern = re.compile(r'//[^\n]*|/\*.*?\*/', re.DOTALL | re.MULTILINE)
+textfilelines_str = re.sub(pattern, "", textfilelines_str)
+
+
+#####################################################
+pattern = re.compile(r'//[^\n]*|/\*.*?\*/', re.DOTALL | re.MULTILINE)
+textfilelines_str = re.sub(pattern, "", textfilelines_str)
+
+input_val=re.findall(r"input\s+[\w_0-9]+\s*.*;{1}",textfilelines_str)
+output_val=re.findall(r"output\s+[\w_0-9)]+\s*.*;{1}",textfilelines_str)
+wire_val =re.findall(r"wire\s+[\w_0-9]+\s*.*;{1}",textfilelines_str) 
+reg_val =re.findall(r"reg\s+[\w_0-9]+\s*.*;{1}",textfilelines_str) 
+logic_val =re.findall(r"logic\s+[\w_0-9]+\s*.*;{1}",textfilelines_str) 
+
+
+output_val_rw=[item for item in output_val if not '=' in item]
+
+file_log_str.write("\n Input statements : \n")
+file_log_str.write(str(input_val))
+file_log_str.write("\n")
+file_log_str.write("\n Output statements : \n")
+file_log_str.write(str(output_val))
+file_log_str.write("\n")
+
+file_log_str.write("\n Input statements : \n")
+for ip_port in input_val:
+    ip_port=re.sub(' +',' ',ip_port) ## removes multiple spaces
+    ip_port = re.sub('[()|^?:;!,-]+', ' ', ip_port)
+    ip_port = re.sub('[\(\[].*?[\)\]]+', '', ip_port) # remove bit positions
+    print(ip_port.strip())
+
+input_port_list=extract_signals(input_val, "input")
+output_port_list=extract_signals(output_val, "output")
+wire_port_list=extract_signals(wire_val, "wire")
+logic_port_list=extract_signals(logic_val, "logic")
+reg_port_list=extract_signals(reg_val, "reg")
+
+file_log_str.write("\n Input ports  : \n")
+file_log_str.write(str(input_port_list))
+file_log_str.write("\n")
+file_log_str.write("\n Output ports  : \n")
+file_log_str.write(str(output_port_list))
+file_log_str.write("\n")
+file_log_str.write("\n Wire ports  : \n")
+file_log_str.write(str(wire_port_list))
+file_log_str.write("\n")
+file_log_str.write("\n Logic ports  : \n")
+file_log_str.write(str(logic_port_list))
+file_log_str.write("\n")
+file_log_str.write("\n Reg ports  : \n")
+file_log_str.write(str(reg_port_list))
+file_log_str.write("\n")
+
+
+output_list_fin=[]
+output_list_final=[]
+
+file_log_str.write("\n Output statements : \n")
+for op_port in output_val_rw:
+    op_port=re.sub(' +',' ',op_port) ## removes multiple spaces
+    op_port = re.sub('[()|^?:;!,-]+', ' ', op_port)
+    op_port = re.sub('[\(\[].*?[\)\]]+', '', op_port) # remove bit positions
+    op_port = op_port.strip()
+    output_list_fin.insert(len(output_list_fin), op_port[6:])
+
+for item in output_list_fin:
+    output_list_final.append(item)
+    #output_list_final.append(" ")
+print(output_list_final)
+#######################################################
+
+assign_val=re.findall(r"assign\s+[\w_0-9]+\s*.*;{1}",textfilelines_str)
+
+#always_var=re.findall(r"always\s+[^assign|endmodule|always]*$",textfilelines_str)
+always_var=re.findall(r"always\s+(?:(?!always|assign|endmodule).)*",textfilelines_str, re.DOTALL)
+
+file_log_str.write("\n Assign statements : \n")
+file_log_str.write(str(assign_val))
+
+file_log_str.write("\n Always Block : \n")
+file_log_str.write(str(always_var))
+
 
 for line in textfilelines:
     # Remove white spaces & comment sections in the line 
@@ -116,6 +218,7 @@ elif (len(clk_list_tot) == 0):
 # Always block 
 file_log.write("\nAlwyas block: Gathering RHS signals... \n")
 for line in textfilelines:
+    line = re.sub('\'+', '&', line)
     line = line.strip()
     if not (line.startswith('//')):
         matchObj = re.match(r'\s*(.*)(//).*', line)
@@ -145,6 +248,8 @@ for line in textfilelines:
 
             # Append the reg signal (in RHS) to the total CLk list 
             if block_run == 1 and line.__contains__('<='):
+                line = re.sub('\'+', '&', line)
+
                 line_sp = line.split()
                 signal = line_sp[0].split()
                 signal[0] = re.sub('[\(\[].*?[\)\]]+', '', signal[0])
@@ -214,6 +319,7 @@ file_log.write("\n#############################################################\
 file_log.write("Assign Statements: Gathering RHS signals & checking for CDC... \n")
 for i in range(2):
  for line in textfilelines:
+    line = re.sub('\'+', '&', line)
     line = line.strip()
     if not (line.startswith('//')):
         matchObj = re.match(r'\s*(.*)(//).*', line)
@@ -247,7 +353,7 @@ for i in range(2):
             if dep_signal is not None:
                 for indiv_signal in dep_signal:
                     # print("indiv signal", indiv_signal)
-                    indiv_signal = re.sub('[()=|&^?:!,-]+', '', indiv_signal)
+                    indiv_signal = re.sub('[()=|^?:!,-]+', '', indiv_signal)
                     # print("indiv signal", indiv_signal)
                     indiv_signal = re.sub('[(){}-]+', '', indiv_signal)
                     indiv_signal = re.sub('[\(\[].*?[\)\]]+', '', indiv_signal)
@@ -334,6 +440,9 @@ file_log.write("Clock 1 complete list : \n")
 file_log.write(",".join(flat_list_1))
 file_log.write("\n")
 
+
+########################################################################################################
+
 file_log.write("\n##########################\n")
 file_log.write("Checking CDC starts here \n")
 file_log.write("\n##########################\n")
@@ -358,6 +467,7 @@ for line in textfilelines:
             file_log.write("\n#############################################################\n")
             always_blk_found = 1
             clk_domain = line.split("posedge", 1)[1].split()[0]
+            block_dep_num=[]
             # print("clk domain is: ", clk_domain)
             clk_list.append(clk_domain)
             # print("clk domain : ", clk_domain)
@@ -369,7 +479,7 @@ for line in textfilelines:
                 # print("block count begin line :  ", line)
                 block_count = block_count + 1
                 block_run = 1
-                # print("BLock count  in begin :", block_count)
+                #print("BLock dep num in begin :", block_count)
 
             # Trying to print block -> debug purpose
             # if(block_count != 0):
@@ -381,7 +491,12 @@ for line in textfilelines:
                 block_count = block_count - 1
                 if (block_count == 0):
                     dept_sig_list = []
-                # print("BLock count  in end :", block_count)
+                if(len(block_dep_num) != 0):
+                    del dept_sig_list[len(dept_sig_list)-block_dep_num[-1]:]
+                    #print("dept sig num after checking : ", block_dep_num)
+                #file_log.write("\ndept sig num after end : " )
+                #file_log.write(str(block_dep_num))
+                #file_log.write("\n")
 
             signal_word = []
             sig_ext = 0
@@ -393,11 +508,6 @@ for line in textfilelines:
                     line_sp = matchObj.group(1)
                 else:
                     line_sp = line
-                # print("Line conta. <= :  ", line_sp)
-                # line_sp = re.sub('[()=|&^?:!-]+', '', line_sp)
-                # print("indiv signal", indiv_signal)
-                # line_sp = re.sub('[(){}-]+', '', line_sp)
-                # line_sp = re.sub('[\(\[].*?[\)\]]+', '', line_sp)
                 signal = line_sp.split()
                 # signal_word = []
                 # print("<= line split : ", line_sp)
@@ -420,12 +530,9 @@ for line in textfilelines:
             if (if_block_on == 1) and (not (line.__contains__('<=')) and (not (line.startswith('//')))):
                 # print("line is ", line)
                 # line = line.strip('(')
+                line = re.sub('\'+', '&', line)
                 line_sp = re.search('\((.*)\)', line)
 
-                # handle diff. symbols inlsit
-                # line_sp = re.sub('[(){}-]+', '', line_sp)
-                # line_sp = re.sub('[\(\[].*?[\)\]]+', '', line_sp)
-                # line_sp.replace("<", "")
 
                 # print("line sp is : ", line_sp)
                 if line_sp is not None:
@@ -435,37 +542,27 @@ for line in textfilelines:
                     # print(line)
                     # print(dept_sig_list)
                     if len(dept_sig_list) != 0:
-                        # print("Previous line dept sig list: ", dept_sig_list)
+                        line = re.sub('\'+', '&', line)
                         dept_sig_list_new = line.split()
+                        #print("new dept list ", dept_sig_list_new)
                         dept_sig_list = dept_sig_list + dept_sig_list_new
                         # print("Previous line dept sig list: ", dept_sig_list)
                     else:
                         dept_sig_list = line.split()
-                    # print("dept_sig_list is ", dept_sig_list)
                     if dept_sig_list[0] != "//":
-                        # print("dept sig list :" , dept_sig_list)
+                        #file_log.write(str(dept_sig_list))
                         for x in dept_sig_list:
-                            # x = x.replace("<", " ")
-                            # x = x.replace(">", " ")
-                            # print("x is : ", x)
+                            #print("x is :", x)
                             if "=" in x:
-                                # print("x 1  is : ", x)
                                 dept_sig_list.remove(x)
-                            elif '\'' in x:
-                                # print("x 2  is : ", x)
+                            elif "&" in x:
                                 dept_sig_list.remove(x)
-                            # elif x.isalpha():
-                            # print("x 3  is : ", x)
-                            # dept_sig_list.remove(x)
-                            # print("x is : ", x)
+                            elif "por" in x:
+                                dept_sig_list.remove(x)
 
-                        # print("dept append after for : ", dept_sig_list)
+                        #print("dept append after for : ", dept_sig_list)
 
-                        # for characters in dept_sig_list:
-                        # if not (any(characters.isalpha() for char in characters)):
-                        #   dept_sig_list.remove(characters)
-                        # print("dept append before for : ", dept_sig_list)
-                        dept_sig_list = [re.sub(r"[-()\"#/@;:<>&{}`+=~|.!?,]", "", dept_sig_list) for dept_sig_list in
+                        dept_sig_list = [re.sub(r"[-()\"#/@;:<>{}`+=~|.!?,]", "", dept_sig_list) for dept_sig_list in
                                          dept_sig_list]
                         # print("dept append : ", dept_sig_list)
 
@@ -474,10 +571,6 @@ for line in textfilelines:
                             if (dept_sig.startswith('P_')):
                                 # print("start with P_")
                                 dept_sig_list.remove(dept_sig)
-                                # print(dep_signal_list)
-                            # elif dept_sig.isnumeric:
-                            # print("start with P2_")
-                            # dept_sig_list.remove(dept_sig)
                             elif len(dept_sig) < 2:
                                 # print("start with P3_")
                                 dept_sig_list.remove(dept_sig)
@@ -488,7 +581,16 @@ for line in textfilelines:
                                 # print("start with P4_")
                                 dept_sig_list.remove(dept_sig)
 
-                        # print("dept sig after checking : ", dept_sig_list)
+                        #file_log.write(str(dept_sig_list))
+                        #file_log.write(str(block_dep_num))
+                        #file_log.write("\n")
+                        #file_log.write(str(len(block_dep_num)))
+
+                        block_dep_num.append(len(dept_sig_list))
+                        #print("dept sig num after begin computation : ", block_dep_num)
+                        #file_log.write("\ndept sig num after begin computation : " )
+                        #file_log.write(str(block_dep_num))
+                        #file_log.write("\n")
 
             if block_count == 0 and block_run == 1 and always_blk_found == 1:
                 clk_list = list(dict.fromkeys(clk_list))
@@ -509,8 +611,10 @@ for line in textfilelines:
                 file_log.write("\nBlock signals :")
                 file_log.write(",".join(signal_word))
                 signal_word[0] = re.sub('[\(\[].*?[\)\]]+', '', signal_word[0])
+                fail_signal = 0
                 if (signal_word[0] in flat_list_0) and (signal_word[0] != "//"):
                     for item in signal_word[2:]:
+                        #print("item is : ", item)
                         item.strip("(")
                         item = re.sub('[(){},-]+', '', item)
                         item = re.sub('[\(\[].*?[\)\]]+', '', item)
@@ -520,7 +624,7 @@ for line in textfilelines:
                                 not "meta" in signal_word[0] and not (
                                 item.startswith('rgb_') or item.startswith('ST_') or item.startswith(
                             '=') or "por_n" in item)) and len(item) > 2:
-                            # print(item)
+                            #print("item is : ", item)
                             if item in flat_list_0:
                                 # print("Pass: ", item + "         Source: ", signal_word[0])
                                 file_log.write("\nPASS: Source signal :")
@@ -528,7 +632,7 @@ for line in textfilelines:
                                 file_log.write("  Registered signal :")
                                 file_log.write(str(signal_word[0]))
                                 file_log.write("\n")
-
+                                port_append(signal_word[0], 1, flat_list_0[0])
 
                             else:
                                 # print("Fail: ", item + "         Source: ", signal_word[0] + "      Clock: ",
@@ -539,12 +643,13 @@ for line in textfilelines:
                                 file_log.write("  Registered Clock :")
                                 file_log.write(str(clk_list_tot[0]))
                                 file_log.write("\n")
+                                fail_signal = 1
+                                port_append(signal_word[0], 0, flat_list_0[0])
 
                 elif (signal_word[0] in flat_list_1) and (signal_word[0] != "//") and (len(clk_list_tot) == 2):
                     for item in signal_word[2:]:
                         item = re.sub('[(){},-]+', '', item)
                         item = re.sub('[\(\[].*?[\)\]]+', '', item)
-                        # print(item_temp)
                         if item.isalnum and (not ("+" in item)) and (not "'" in item) and (not "<=" in item) and (
                                 not "meta" in signal_word[0] and not (
                                 item.startswith('rgb_') or item.startswith('ST_') or item.startswith(
@@ -557,6 +662,7 @@ for line in textfilelines:
                                 file_log.write("  Registered signal :")
                                 file_log.write(str(signal_word[0]))
                                 file_log.write("\n")
+                                port_append(signal_word[0], 1, flat_list_1[0])
                             else:
                                 # print("Fail: ", item + "         Source: ", signal_word[0] + "      Clock: ",
                                 file_log.write("\nFAIL: Source signal :")
@@ -567,9 +673,115 @@ for line in textfilelines:
                                 file_log.write("  Registered Clock :")
                                 file_log.write(str(clk_list_tot[1]))
                                 file_log.write("\n")
+                                fail_signal = 1
+                                port_append(signal_word[0], 0, flat_list_1[0])
 
                 if_block_on = 0
-                # signal_word=[]
+
+    output_list_f=[]            
+    for item in output_port_list:
+        print(item)
+        if item in flat_list_0:
+            output_list_f.append(item)
+            output_list_f.append(flat_list_0[0])
+        elif item in flat_list_1:
+            output_list_f.append(item)
+            output_list_f.append(flat_list_1[0])
+
+    logic_list_f=[]
+    for item in logic_port_list:
+        if item in flat_list_0:
+            logic_list_f.append(item)
+            logic_list_f.append(flat_list_0[0])
+        elif item in flat_list_1:
+            logic_list_f.append(item)
+            logic_list_f.append(flat_list_1[0]) 
+            
+    reg_list_f=[]        
+    for item in reg_port_list:
+        if item in flat_list_0:
+            reg_list_f.append(item)
+            reg_list_f.append(flat_list_0[0])
+        elif item in flat_list_1:
+            reg_list_f.append(item)
+            reg_list_f.append(flat_list_1[0]) 
+
+    #remoe duplicates
+    op_fail_list = list(dict.fromkeys(op_fail_list))
+    #op_pass_list = list(dict.fromkeys(op_pass_list))
+
+    file_log.write(" Output Final list :")
+    file_log.write(str(output_list_f))
+    file_log.write("\n")
+    file_log.write(" Output Final pass list :")
+    file_log.write(str(op_pass_list))
+    file_log.write("\n")
+    file_log.write(" Output Final fail list :")
+    file_log.write(str(op_fail_list))
+    file_log.write("\n")
+
+    file_output_files = open("output_port.txt", "w")
+    list_size=int(len(op_pass_list)/2)
+    for index in range(list_size):
+        file_output_files.write(f'{op_pass_list[index*2]:<24}{op_pass_list[index*2+1]}\n')
+    file_output_files.close()
+
+         
+
+    workbook = xlsxwriter.Workbook('aon_pwrup_seq.xlsx')
+    worksheet = workbook.add_worksheet("My sheet")
+    row = 0
+    column = 0
+
+
+    for index in range(int(len(input_port_list))):
+        # write operation perform
+        worksheet.write(row, column, input_port_list[index])
+        worksheet.write(row, column+1," ")
+        worksheet.write(row, column+2,"Input")
+        row += 1
+
+    for index in range(int(len(op_pass_list)/2)):
+        # write operation perform
+        worksheet.write(row, column, op_pass_list[index*2])
+        worksheet.write(row, column+1,op_pass_list[index * 2 + 1])
+        worksheet.write(row, column+2,"Output")
+        row += 1
+        
+    for index in range(int(len(op_fail_list))):
+        # write operation perform
+        worksheet.write(row, column, op_fail_list[index])
+        worksheet.write(row, column+1," ")
+        worksheet.write(row, column+2,"Output")
+        row += 1
+     
+    for index in range(int(len(logic_list_f)/2)):
+        # write operation perform
+        worksheet.write(row, column, logic_list_f[index*2])
+        worksheet.write(row, column+1,logic_list_f[index * 2 + 1])
+        worksheet.write(row, column+2,"Wire")
+        row += 1
+        
+        
+    for index in range(int(len(reg_list_f)/2)):
+        # write operation perform
+        worksheet.write(row, column, reg_list_f[index*2])
+        worksheet.write(row, column+1,reg_list_f[index * 2 + 1])
+        worksheet.write(row, column+2,"reg")
+        row += 1
+
+        
+
+
+
+
+    print("row is :", row)
+    print("column is :", column)
+
+
+
+
+workbook.close()
 textfile.close()
 file_log.close()
 file_log_str.close()
